@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pillow
+sentence-transformers
+faiss-cpu
+pytesseract
+python-multipart
+tqdm
+httpx
+pydantic
