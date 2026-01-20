@@ -62,13 +62,31 @@ class VisionAdapter:
                     content = content.split("```json")[1].split("```")[0].strip()
                 elif "```" in content:
                     content = content.split("```")[1].strip()
+                
+                # Regex fallback if it's still not valid JSON or has leading/trailing text
+                import re
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    content = json_match.group(0)
 
                 try:
                     json_data = json.loads(content)
                     return VisionOutput(**json_data)
                 except json.JSONDecodeError:
-                    print(f"Failed to decode JSON from LLM: {content}")
-                    return None
+                    print(f"Failed to decode JSON from LLM. Falling back to raw text.")
+                    # Fallback: Use the raw content as the description
+                    return VisionOutput(
+                        summary=content[:2000],
+                        description=content,
+                        activity="Unknown",
+                        setting="Unknown",
+                        social_context="Unknown",
+                        objects=[],
+                        people_count=0,
+                        text_content=None,
+                        weather="Unknown",
+                        time_of_day="Unknown"
+                    )
                 except Exception as e:
                     print(f"Validation error: {e}")
                     return None
@@ -87,11 +105,11 @@ class VisionAdapter:
                 payload = {
                     "model": self.model_name,
                     "messages": [
-                        {"role": "system", "content": "You are a query expander for a visual memory system. Turn the user's short query into a descriptive sentence describing a scene. Output ONLY the sentence."},
+                        {"role": "system", "content": "You are a keyword optimizer. Convert the user's query into a list of relevant visual keywords and synonyms. Output ONLY the keywords. Do not use full sentences. Do not explain. Example: 'wearing a suit' -> 'suit, formal wear, tuxedo, blazer, business attire, standing man'."},
                         {"role": "user", "content": f"Query: {query}"}
                     ],
-                    "temperature": 0.3,
-                    "max_tokens": 100
+                    "temperature": 0.0,
+                    "max_tokens": 40
                 }
 
                 headers = {"Content-Type": "application/json"}

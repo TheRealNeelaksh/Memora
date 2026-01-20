@@ -14,8 +14,8 @@ interface MemoryCardProps {
 export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, selected, selectionMode }) => {
   // Parse tags if string, else use as is
   const tagsList = memory.tags
-      ? memory.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 3)
-      : [];
+    ? memory.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 3)
+    : [];
 
   const isVisionFailed = memory.vision_status === 'failed';
 
@@ -49,9 +49,9 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, selecte
 
         {/* Failed Indicator */}
         {isVisionFailed && (
-             <div className="absolute top-2 left-2 bg-red-100/90 text-red-600 p-1 rounded text-xs font-bold shadow-sm" title="Vision analysis failed">
-                 <EyeOff className="w-4 h-4" />
-             </div>
+          <div className="absolute top-2 left-2 bg-red-100/90 text-red-600 p-1 rounded text-xs font-bold shadow-sm" title="Vision analysis failed">
+            <EyeOff className="w-4 h-4" />
+          </div>
         )}
 
         {/* Selection Indicator */}
@@ -63,31 +63,38 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, selecte
             <CheckCircle className="w-5 h-5" fill={selected ? "currentColor" : "none"} />
           </div>
         )}
+
+        {/* Score Indicator */}
+        {memory.score !== undefined && memory.score > 0 && (
+          <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded border border-white/20 font-mono shadow-sm z-10" title="Similarity Score">
+            {(memory.score).toFixed(2)}
+          </div>
+        )}
       </div>
 
       {/* Content */}
       <div className="p-3 flex flex-col gap-2 flex-grow">
-          <p className="text-gray-900 text-sm font-medium line-clamp-2 leading-tight" title={memory.summary}>
-            {memory.summary || "No description available"}
-          </p>
+        <p className="text-gray-900 text-sm font-medium line-clamp-2 leading-tight" title={memory.summary}>
+          {memory.summary || "No description available"}
+        </p>
 
-          <div className="flex flex-wrap gap-1 mt-auto">
-              {tagsList.length > 0 ? (
-                  tagsList.map((t, i) => (
-                      <span key={i} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full border border-gray-200">
-                          {t}
-                      </span>
-                  ))
-              ) : (
-                  <span className="text-[10px] text-gray-400 italic">No tags</span>
-              )}
-          </div>
-
-          {memory.exif_date && (
-             <p className="text-gray-400 text-[10px] mt-1 border-t pt-2">
-               {format(new Date(memory.exif_date), 'MMM d, yyyy')}
-             </p>
+        <div className="flex flex-wrap gap-1 mt-auto">
+          {tagsList.length > 0 ? (
+            tagsList.map((t, i) => (
+              <span key={i} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full border border-gray-200">
+                {t}
+              </span>
+            ))
+          ) : (
+            <span className="text-[10px] text-gray-400 italic">No tags</span>
           )}
+        </div>
+
+        {memory.exif_date && (
+          <p className="text-gray-400 text-[10px] mt-1 border-t pt-2">
+            {format(new Date(memory.exif_date), 'MMM d, yyyy')}
+          </p>
+        )}
       </div>
     </div>
   );
