@@ -7,13 +7,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5500',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },
       // Also proxy specific endpoints just in case
       '^/(mount|scan|search|thumbnail|memory|health)': {
-        target: 'http://127.0.0.1:5500',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true
       }
     }

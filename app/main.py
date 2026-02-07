@@ -24,6 +24,18 @@ from .vision.adapter import VisionAdapter
 APP_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="Memory Brain - Phase1.5")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
 MODEL_NAME = "all-MiniLM-L6-v2"
 EMBED_DIM = 384
 
@@ -373,16 +385,46 @@ async def test_vision_config(cfg: VisionConfig):
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers=headers)
+
             if resp.status_code == 200:
                 data = resp.json()
-                return {"status": "ok", "details": f"Connected. Found {len(data.get('data', []))} models."}
-            else:
-                 # Fallback check for Ollama base
-                 if "ollama" in cfg.endpoint_url:
-                     resp = await client.get(f"{cfg.endpoint_url.rstrip('/')}/api/tags")
-                     if resp.status_code == 200:
-                         return {"status": "ok", "details": "Connected to Ollama."}
+                return {
+                    "status": "ok",
+                    "details": f"Connected. Found {len(data.get('data', []))} models."
+                }
 
-            return {"status": "error", "details": f"Status {resp.status_code}: {resp.text}"}
+            # Fallback check for Ollama base
+            if "ollama" in cfg.endpoint_url:
+                resp = await client.get(f"{cfg.endpoint_url.rstrip('/')}/api/tags")
+                if resp.status_code == 200:
+                    return {"status": "ok", "details": "Connected to Ollama."}
+
+            return {
+                "status": "error",
+                "details": f"Status {resp.status_code}: {resp.text}"
+            }
+
     except Exception as e:
         return {"status": "error", "details": str(e)}
+
+
+class FilePathRequest(BaseModel):
+    path: str
+
+@app.options("/open-file")
+def open_file_options():
+    return {"status": "ok"}
+
+@app.post("/open-file")
+def open_file(request: FilePathRequest):
+    try:
+        os.startfile(request.path)
+        return {
+            "status": "success",
+            "message": "Opened in default Windows viewer"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }

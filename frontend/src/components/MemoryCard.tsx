@@ -12,6 +12,8 @@ interface MemoryCardProps {
 }
 
 export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, selected, selectionMode }) => {
+
+
   // Parse tags if string, else use as is
   const tagsList = memory.tags
     ? memory.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 3)
@@ -46,6 +48,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, selecte
             <ImageIcon className="w-8 h-8" />
           </div>
         )}
+
 
         {/* Failed Indicator */}
         {isVisionFailed && (
