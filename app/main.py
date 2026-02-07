@@ -23,15 +23,17 @@ from .vision.adapter import VisionAdapter
 
 APP_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="Memory Brain - Phase1.5")
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # your frontend
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -409,6 +411,9 @@ async def test_vision_config(cfg: VisionConfig):
 class FilePathRequest(BaseModel):
     path: str
 
+@app.options("/open-file")
+def open_file_options():
+    return {"status": "ok"}
 
 @app.post("/open-file")
 def open_file(request: FilePathRequest):

@@ -49,7 +49,6 @@ export const MemoryDetail: React.FC<MemoryDetailProps> = ({ memoryId, thumbnailB
   };
 
   const openFile = async () => {
-<<<<<<< HEAD
   if (!data?.path) return;
 
   try {
