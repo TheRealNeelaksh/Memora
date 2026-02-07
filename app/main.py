@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response, JSONResponse, FileResponse
 from sentence_transformers import SentenceTransformer
 from PIL import Image, ImageOps
 import numpy as np
@@ -146,51 +146,124 @@ async def search(req: SearchRequest):
 
     qvec = state["embed_model"].encode(search_query).astype("float32")
     results = state["faiss"].search(qvec, topk=req.top_k)
-    # optionally filter by date range
-    out = []
-
+    
+    # ------------------ Hybrid Scoring & Re-ranking ------------------
+    # Boost factor: If raw query terms exist in text, improve score (lower distance).
+    raw_terms = [t.lower() for t in req.query.split() if len(t) > 2] # Ignore small words
+    
+    processed_results = []
+    
     c = conn.cursor()
     for r in results:
         fid, path, score = r["file_id"], r["path"], r["score"]
-        # Threshold filtering (L2 distance)
-        # 1.2 is a loose threshold for "relevant enough"
-        # 0.5 is very close. 1.5 is likely irrelevant.
-        if score > 1.4:
-            continue
-
+        
         c.execute("SELECT file_id, path, created_at, exif_date, memory_summary, thumbnail, tags, vision_status FROM memories WHERE file_id=?", (fid,))
         row = c.fetchone()
         if not row:
             continue
-
-        # Manually unpack since we selected specific columns
+            
         file_id, path_val, created_at, exif_date, summary, thumbnail_blob, tags, vision_status = row
 
-        # date filtering
+        # Date filtering
         if req.date_from or req.date_to:
             ok = True
-            if req.date_from:
-                if exif_date:
-                    ok = ok and exif_date >= req.date_from
-            if req.date_to:
-                if exif_date:
-                    ok = ok and exif_date <= req.date_to
-            if not ok:
-                continue
+            if req.date_from and exif_date and exif_date < req.date_from: ok = False
+            if req.date_to and exif_date and exif_date > req.date_to: ok = False
+            if not ok: continue
+        
+        # --- Keyword Boosting ---
+        text_content = (summary or "").lower() + " " + (tags or "").lower()
+        
+        # Count exact keyword matches
+        matches = sum(1 for term in raw_terms if term in text_content)
+        if matches > 0:
+            # Significant boost for exact matches
+            # e.g. 1 match -> score * 0.6, 2 matches -> score * 0.4
+            multiplier = max(0.2, 0.7 - (matches * 0.15)) 
+            score = score * multiplier
+        
         thumb_b64 = None
         if thumbnail_blob:
             thumb_b64 = "data:image/jpeg;base64," + base64.b64encode(thumbnail_blob).decode("utf-8")
-        out.append({
-            "file_id": file_id,
-            "path": path_val,
-            "score": float(score),
-            "summary": summary,
-            "tags": tags,
-            "vision_status": vision_status,
-            "exif_date": exif_date,
-            "thumbnail_b64": thumb_b64
+
+        processed_results.append({
+             "file_id": file_id,
+             "path": path_val,
+             "score": float(score),
+             "summary": summary,
+             "tags": tags,
+             "vision_status": vision_status,
+             "created_at": created_at,
+             "exif_date": exif_date,
+             "thumbnail_b64": thumb_b64
         })
-    return {"results": out}
+
+    # Sort by new scores (Ascending)
+    processed_results.sort(key=lambda x: x["score"])
+    
+    # --- Dynamic Filtering ---
+    # Only show results within a reasonable range of the top result
+    if processed_results:
+        best_score = processed_results[0]["score"]
+        # Allow results up to +0.5 distance from best (or 1.5x, whichever is safer)
+        cutoff = best_score + 0.5 
+        
+        # Hard cap to prevent total garbage if everything is bad (e.g. > 1.4 unboosted)
+        # But if boosted, score will be < 1.0.
+        
+        filtered = [res for res in processed_results if res["score"] <= cutoff]
+        processed_results = filtered
+
+    print(f"Search found {len(processed_results)} results (after filtering).")
+    for r in processed_results[:3]:
+        print(f" - {r['path']} (Score: {r['score']})")
+
+    return {"results": processed_results}
+
+class OpenRequest(BaseModel):
+    file_id: str
+
+@app.post("/open")
+def open_file(req: OpenRequest):
+    if not state.get("conn"):
+        raise HTTPException(status_code=400, detail="No DB loaded")
+    c = state["conn"].cursor()
+    c.execute("SELECT path FROM memories WHERE file_id=?", (req.file_id,))
+    row = c.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    path = row[0]
+    import sys
+    import subprocess
+    
+    try:
+        if os.name == 'nt':
+            os.startfile(path)
+        elif sys.platform == 'darwin':
+            subprocess.call(['open', path])
+        else:
+            subprocess.call(['xdg-open', path])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
+        
+    return {"status": "opened"}
+
+@app.get("/images/{file_id}")
+def get_full_image(file_id: str):
+    if not state.get("conn"):
+        raise HTTPException(status_code=400, detail="No DB loaded")
+    c = state["conn"].cursor()
+    c.execute("SELECT path FROM memories WHERE file_id=?", (file_id,))
+    row = c.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    path = row[0]
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File on disk not found")
+        
+    return FileResponse(path)
 
 @app.get("/thumbnail/{file_id}")
 def thumbnail(file_id: str):
@@ -231,6 +304,38 @@ def memory(file_id: str):
 @app.get("/health")
 def health():
     return {"status": "ok", "mounted_path": state.get("mounted_path")}
+
+@app.get("/memories")
+def get_memories(limit: int = 50, offset: int = 0):
+    if not state.get("conn"):
+        raise HTTPException(status_code=400, detail="No DB loaded")
+    c = state["conn"].cursor()
+    c.execute("""
+        SELECT file_id, path, created_at, exif_date, memory_summary, thumbnail, tags, vision_status
+        FROM memories 
+        ORDER BY created_at DESC 
+        LIMIT ? OFFSET ?
+    """, (limit, offset))
+    rows = c.fetchall()
+    
+    out = []
+    for row in rows:
+        file_id, path_val, created_at, exif_date, summary, thumbnail_blob, tags, vision_status = row
+        thumb_b64 = None
+        if thumbnail_blob:
+            thumb_b64 = "data:image/jpeg;base64," + base64.b64encode(thumbnail_blob).decode("utf-8")
+        
+        out.append({
+            "file_id": file_id,
+            "path": path_val,
+            "score": 0.0, # No score for direct listing
+            "summary": summary,
+            "tags": tags,
+            "vision_status": vision_status,
+            "exif_date": exif_date,
+            "thumbnail_b64": thumb_b64
+        })
+    return {"results": out}
 
 # --- Config Endpoints ---
 

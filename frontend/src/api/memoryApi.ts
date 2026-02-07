@@ -47,14 +47,14 @@ export interface MountResponse {
 }
 
 export interface VisionConfig {
-    endpoint_url: string;
-    model_name: string;
-    api_key?: string;
+  endpoint_url: string;
+  model_name: string;
+  api_key?: string;
 }
 
 export interface ConfigTestResponse {
-    status: string;
-    details: string;
+  status: string;
+  details: string;
 }
 
 export const memoryApi = {
@@ -103,11 +103,20 @@ export const memoryApi = {
     return res.json();
   },
 
+  async getRecentMemories(limit: number = 50, offset: number = 0): Promise<SearchResponse> {
+    const res = await fetch(`${API_BASE}/memories?limit=${limit}&offset=${offset}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to fetch memories');
+    }
+    return res.json();
+  },
+
   async getMemory(file_id: string): Promise<MemoryDetail> {
     const res = await fetch(`${API_BASE}/memory/${file_id}`);
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Get memory failed');
+      const err = await res.json();
+      throw new Error(err.detail || 'Get memory failed');
     }
     return res.json();
   },
@@ -119,51 +128,63 @@ export const memoryApi = {
   // --- Vision Config ---
 
   async getVisionConfig(): Promise<VisionConfig> {
-      const res = await fetch(`${API_BASE}/config/vision`);
-      if (!res.ok) {
-           // Allow 400 if not mounted, return empty
-           if(res.status === 400) return {endpoint_url: "", model_name: ""};
-           throw new Error('Failed to load vision config');
-      }
-      return res.json();
+    const res = await fetch(`${API_BASE}/config/vision`);
+    if (!res.ok) {
+      // Allow 400 if not mounted, return empty
+      if (res.status === 400) return { endpoint_url: "", model_name: "" };
+      throw new Error('Failed to load vision config');
+    }
+    return res.json();
   },
 
   async setVisionConfig(cfg: VisionConfig): Promise<void> {
-      const res = await fetch(`${API_BASE}/config/vision`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(cfg)
-      });
-      if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || 'Failed to save config');
-      }
+    const res = await fetch(`${API_BASE}/config/vision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to save config');
+    }
   },
 
   async testVisionConfig(cfg: VisionConfig): Promise<ConfigTestResponse> {
-      const res = await fetch(`${API_BASE}/config/vision/test`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(cfg)
-      });
+    const res = await fetch(`${API_BASE}/config/vision/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
 
-      if (!res.ok) {
-          // Attempt to read JSON error detail
-          try {
-              const errData = await res.json();
-              const msg = errData.detail || errData.details || res.statusText;
-              // Normalize list of errors (Pydantic validation)
-              if (Array.isArray(msg)) {
-                  throw new Error(msg.map((e: any) => e.msg).join(', '));
-              }
-              throw new Error(msg);
-          } catch (e: any) {
-              // If JSON parse fails or it was just thrown above
-              if (e.message) throw e;
-              throw new Error(`Connection test failed: ${res.status} ${res.statusText}`);
-          }
+    if (!res.ok) {
+      // Attempt to read JSON error detail
+      try {
+        const errData = await res.json();
+        const msg = errData.detail || errData.details || res.statusText;
+        // Normalize list of errors (Pydantic validation)
+        if (Array.isArray(msg)) {
+          throw new Error(msg.map((e: any) => e.msg).join(', '));
+        }
+        throw new Error(msg);
+      } catch (e: any) {
+        // If JSON parse fails or it was just thrown above
+        if (e.message) throw e;
+        throw new Error(`Connection test failed: ${res.status} ${res.statusText}`);
       }
+    }
 
-      return res.json();
+    return res.json();
+  },
+
+  async openFile(file_id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to open file');
+    }
   }
 };
